@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My YouTube Collection</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 min-h-screen">
+
+    {% if messages %}
+        <ul class="messages fixed top-0 left-1/2 -translate-x-1/2 w-full max-w-md z-50">
+            {% for message in messages %}
+                <li{% if message.tags %} class="p-4 my-2 rounded-lg shadow-md text-center 
+                    {% if message.level == DEFAULT_MESSAGE_LEVELS.SUCCESS %} bg-green-500 text-white {% endif %}
+                    {% if message.level == DEFAULT_MESSAGE_LEVELS.ERROR %} bg-red-500 text-black {% endif %}
+                    {% if message.level == DEFAULT_MESSAGE_LEVELS.WARNING %} bg-yellow-500 text-black {% endif %}"
+                {% endif %}>
+                    {% if message.level == DEFAULT_MESSAGE_LEVELS.SUCCESS %}✅ {% endif %}
+                    {% if message.level == DEFAULT_MESSAGE_LEVELS.ERROR %}❌ {% endif %}
+                    {% if message.level == DEFAULT_MESSAGE_LEVELS.WARNING %}⚠️ {% endif %}
+                    {{ message }}
+                </li>
+            {% endfor %}
+        </ul>
+    {% endif %}
+
+    <div class="p-4">
+        <h1 class="text-4xl font-bold text-center my-8">My YouTube Collection</h1>
+
+        <div class="max-w-xl mx-auto">
+            <div class="border-b border-gray-200">
+                <nav class="-mb-px flex space-x-8" aria-label="Tabs">
+                    <a href="#" class="tab-link border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm active-tab" data-tab="video-form">
+                        Add Video
+                    </a>
+                    <a href="#" class="tab-link border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm" data-tab="channel-form">
+                        Add Channel
+                    </a>
+                </nav>
+            </div>
+            <div id="video-form" class="tab-content bg-white p-6 rounded-lg shadow-md">
+                <form method="post">
+                    {% csrf_token %}
+                    <div class="mb-4">
+                        <label for="{{ video_form.url.id_for_label }}" class="block text-gray-700 text-sm font-bold mb-2">YouTube Video URL</label>
+                        <input type="url" name="url" id="{{ video_form.url.id_for_label }}" class="border border-gray-300 rounded-md p-2 w-full focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Enter YouTube video URL" required>
+                    </div>
+                    <button type="submit" name="add_video" class="w-full bg-blue-500 text-white font-bold py-2 px-4 rounded hover:bg-blue-700">Add Video</button>
+                </form>
+            </div>
+            <div id="channel-form" class="tab-content hidden bg-white p-6 rounded-lg shadow-md">
+                <form method="post">
+                    {% csrf_token %}
+                    <div class="mb-4">
+                        <label for="{{ channel_form.channel_url.id_for_label }}" class="block text-gray-700 text-sm font-bold mb-2">YouTube Channel URL</label>
+                        <input type="url" name="channel_url" id="{{ channel_form.channel_url.id_for_label }}" class="border border-gray-300 rounded-md p-2 w-full focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Enter YouTube channel URL" required>
+                    </div>
+                    <button type="submit" name="add_channel" class="w-full bg-blue-500 text-white font-bold py-2 px-4 rounded hover:bg-blue-700">Add Channel</button>
+                </form>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 flex-wrap">
+            {% for video in videos %}
+                <div class="video-thumbnail cursor-pointer bg-white rounded-lg shadow-md overflow-hidden" data-video-id="{{ video.video_id }}">
+                    <img src="https://img.youtube.com/vi/{{ video.video_id }}/hqdefault.jpg" alt="Video thumbnail" class="w-full">
+                    <div class="p-4">
+                        <h3 class="font-bold">{{ video.title }}</h3>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+
+        <div class="pagination flex justify-center mt-8">
+            <span class="step-links">
+                {% if videos.has_previous %}
+                    <a href="?page=1" class="px-4 py-2 bg-white border rounded-md">&laquo; first</a>
+                    <a href="?page={{ videos.previous_page_number }}" class="px-4 py-2 bg-white border rounded-md">previous</a>
+                {% endif %}
+
+                <span class="current px-4 py-2 bg-blue-500 text-white border rounded-md">
+                    Page {{ videos.number }} of {{ videos.paginator.num_pages }}.
+                </span>
+
+                {% if videos.has_next %}
+                    <a href="?page={{ videos.next_page_number }}" class="px-4 py-2 bg-white border rounded-md">next</a>
+                    <a href="?page={{ videos.paginator.num_pages }}" class="px-4 py-2 bg-white border rounded-md">last &raquo;</a>
+                {% endif %}
+            </span>
+        </div>
+    </div>
+
+    <div id="video-modal" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+        <div class="relative bg-white rounded-lg shadow-lg w-full max-w-3xl">
+            <button id="close-modal" class="absolute top-0 right-0 mt-2 mr-2 text-gray-700 hover:text-black text-2xl font-bold">&times;</button>
+            <div class="aspect-w-16 aspect-h-9">
+                <iframe id="video-iframe" src="" frameborder="0" allow="autoplay; encrypted-media" allowfullscreen class="w-full h-full"></iframe>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const modal = document.getElementById('video-modal');
+            const iframe = document.getElementById('video-iframe');
+            const closeModalBtn = document.getElementById('close-modal');
+            const videoThumbnails = document.querySelectorAll('.video-thumbnail');
+
+            videoThumbnails.forEach(thumbnail => {
+                thumbnail.addEventListener('click', () => {
+                    const videoId = thumbnail.getAttribute('data-video-id');
+                    iframe.src = `https://www.youtube.com/embed/${videoId}?autoplay=1`;
+                    modal.classList.remove('hidden');
+                });
+            });
+
+            closeModalBtn.addEventListener('click', () => {
+                modal.classList.add('hidden');
+                iframe.src = '';
+            });
+
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) {
+                    modal.classList.add('hidden');
+                    iframe.src = '';
+                }
+            });
+
+            const tabLinks = document.querySelectorAll('.tab-link');
+            const tabContents = document.querySelectorAll('.tab-content');
+
+            tabLinks.forEach(link => {
+                link.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const tab = link.getAttribute('data-tab');
+
+                    tabLinks.forEach(l => l.classList.remove('active-tab'));
+                    link.classList.add('active-tab');
+
+                    tabContents.forEach(content => {
+                        if (content.id === tab) {
+                            content.classList.remove('hidden');
+                        } else {
+                            content.classList.add('hidden');
+                        }
+                    });
+                });
+            });
+        });
+    </script>
+
+</body>
+</html>
